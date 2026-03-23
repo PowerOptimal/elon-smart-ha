@@ -1,0 +1,11 @@
+{
+  "domain": "elon_water_heater",
+  "name": "Elon Water Heater",
+  "version": "0.1.0",
+  "documentation": "https://github.com/yourrepo/elon_water_heater",
+  "requirements": [],
+  "codeowners": ["@yourname"],
+  "integration_type": "device",
+  "config_flow": true,
+  "iot_class": "local_polling"
+}
