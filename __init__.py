@@ -34,15 +34,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry."""
     serial_number = entry.data["serial_number"]
 
-    # Create aiohttp session
-    session = aiohttp.ClientSession()
+    # Create aiohttp session with SSL disabled (device has no HTTPS)
+    connector = aiohttp.TCPConnector(ssl=False)
+    session = aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=10),
+        connector=connector,
+    )
 
     try:
         # Create API client
         api = ElonApiClient(serial_number, session)
 
         # Create coordinator
-        coordinator = ElonDataUpdateCoordinator(hass, api, serial_number)
+        coordinator = ElonDataUpdateCoordinator(hass, api, serial_number, entry)
 
         # Initial data fetch
         await coordinator.async_config_entry_first_refresh()

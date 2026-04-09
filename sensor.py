@@ -5,7 +5,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature, UnitOfElectricCurrent, UnitOfElectricPotential, UnitOfResistance, UnitOfEnergy
+from homeassistant.const import UnitOfTemperature, UnitOfElectricCurrent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback

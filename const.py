@@ -1,5 +1,7 @@
 """Constants for the Elon Water Heater integration."""
 
+from datetime import timedelta
+
 DOMAIN = "elon_water_heater"
 
 # Device hostname format
@@ -68,4 +70,4 @@ POWER_SOURCE_NAMES = {
 HEATING_CURRENT_THRESHOLD = 2.0  # Amps
 
 # Polling interval
-DEFAULT_SCAN_INTERVAL = 30  # seconds
+DEFAULT_SCAN_INTERVAL = timedelta(seconds=30)

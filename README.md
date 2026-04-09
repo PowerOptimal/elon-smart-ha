@@ -32,7 +32,7 @@ Or manually add this repository to HACS:
 
 1. Copy the `elon_water_heater` folder to your Home Assistant config directory:
    ```
-   /config/custom_components/elon_water_heater/
+   scp -r * root@<your ha instance>:~/config/custom_components/elon_water_heater/
    ```
 2. Restart Home Assistant
 

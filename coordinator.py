@@ -1,5 +1,9 @@
 """Data coordinator for Elon Water Heater."""
 
+import logging
+from datetime import timedelta
+
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -27,6 +31,7 @@ class ElonDataUpdateCoordinator(DataUpdateCoordinator):
         hass: HomeAssistant,
         api: ElonApiClient,
         serial_number: str,
+        config_entry: ConfigEntry,
     ) -> None:
         """Initialize the coordinator."""
         self.api = api
@@ -38,8 +43,9 @@ class ElonDataUpdateCoordinator(DataUpdateCoordinator):
 
         super().__init__(
             hass,
-            logger=__name__,
+            logging.getLogger(__name__),
             name=DOMAIN,
+            config_entry=config_entry,
             update_interval=DEFAULT_SCAN_INTERVAL,
         )
 
