@@ -15,27 +15,30 @@ Home Assistant integration for the Elon solar/grid smart water heating device.
 - Elon water heater device on your network
 
 ## Installation
+Until this gets published to HACS, you can install it directly from this repository as follows:
+- Go to **Settings** → **Add-ons** → **HACS** → **Repositories**
+- Add: `https://github.com/yourrepo/elon_water_heater`
+- Install from the Integrations tab
+
+
 
 ### Option 1: HACS (Recommended)
-
+When we get this registered, this will work too
 1. Open Home Assistant
 2. Go to **Settings** → **Add-ons** → **HACS**
 3. Click the **+** button
 4. Search for "Elon Water Heater" and install
 
-Or manually add this repository to HACS:
-- Go to **Settings** → **Add-ons** → **HACS** → **Repositories**
-- Add: `https://github.com/yourrepo/elon_water_heater`
-- Install from the Integrations tab
+
 
 ### Option 2: Manual
+For developers, do the folloing 
 
-1. Copy the `elon_water_heater` folder to your Home Assistant config directory:
-   ```
-   scp -r * root@<your ha instance>:~/config/custom_components/elon_water_heater/
-   # Restart Home Assistant
-   ssh root@<your ha instance> core restart
-   ```
+Copy the `elon_water_heater` folder to your Home Assistant config directory and restart Home Assistant:
+```shell
+scp -r * root@<your ha instance>:~/config/custom_components/elon_water_heater/
+ssh root@<your ha instance> 'ha core restart'
+```
 
 ## Configuration
 
@@ -56,9 +59,8 @@ elon_water_heater:
   serial_number: "1234"
 ```
 
-Replace `1234` with your device serial number.
-
-Restart Home Assistant after adding configuration.
+Replace `1234` with your device serial number.  Restart Home Assistant after adding configuration. It should automatically
+add a dashboard for you.
 
 ## Entities
 
