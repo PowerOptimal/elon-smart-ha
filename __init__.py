@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from .api import ElonApiClient
 from .coordinator import ElonDataUpdateCoordinator
 from .const import DOMAIN
-from .dashboard import async_setup_dashboard
+from .dashboard import async_schedule_dashboard_setup
 
 PLATFORMS = ["sensor", "switch"]
 
@@ -58,8 +58,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # Forward to platforms
         await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-        # Create the Lovelace dashboard on first run (no-op if already present)
-        await async_setup_dashboard(hass, serial_number)
+        # Schedule dashboard creation to run after HA has fully started
+        async_schedule_dashboard_setup(hass, serial_number)
 
         return True
 

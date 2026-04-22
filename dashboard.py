@@ -1,34 +1,47 @@
 """Automatic Lovelace dashboard creation for Elon Water Heater."""
 
 import logging
-import uuid
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.storage import Store
+from homeassistant.core import HomeAssistant, Event
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import slugify
+
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-_DASHBOARDS_STORE_KEY = "lovelace_dashboards"
-_STORE_VERSION = 1
+
+def _lookup_entity_ids(hass: HomeAssistant, serial: str) -> dict[str, str]:
+    """Return actual entity IDs from the HA entity registry by unique_id."""
+    registry = er.async_get(hass)
+
+    wanted = {
+        "water_temperature":   ("sensor", f"{serial}_water_temperature"),
+        "ambient_temperature": ("sensor", f"{serial}_ambient_temperature"),
+        "power_source":        ("sensor", f"{serial}_power_source"),
+        "heating_state":       ("sensor", f"{serial}_heating_state"),
+        "ac_current":          ("sensor", f"{serial}_ac_current"),
+        "grid_heat":           ("switch", f"{serial}_grid_heat"),
+    }
+
+    result = {}
+    for name, (platform, unique_id) in wanted.items():
+        entity_id = registry.async_get_entity_id(platform, DOMAIN, unique_id)
+        if entity_id:
+            result[name] = entity_id
+        else:
+            device_slug = slugify(f"elon {serial}")
+            result[name] = f"{platform}.{device_slug}_{name}"
+            _LOGGER.warning(
+                "Dashboard: entity not found for unique_id=%s, guessing %s",
+                unique_id, result[name],
+            )
+
+    return result
 
 
-def _entity_id(platform: str, serial: str, suffix: str) -> str:
-    """Build the entity ID HA will assign given our unique_id naming."""
-    # With _attr_has_entity_name=True, device name is "Elon {serial}" and
-    # entity name is e.g. "Water Temperature", so HA slugifies the combo.
-    device_slug = slugify(f"elon {serial}")
-    return f"{platform}.{device_slug}_{suffix}"
-
-
-def _build_dashboard_config(serial: str) -> dict:
-    """Return the lovelace config dict with real entity IDs."""
-    water_temp   = _entity_id("sensor", serial, "water_temperature")
-    ambient_temp = _entity_id("sensor", serial, "ambient_temperature")
-    power_source = _entity_id("sensor", serial, "power_source")
-    heating_state = _entity_id("sensor", serial, "heating_state")
-    ac_current   = _entity_id("sensor", serial, "ac_current")
-    grid_heat    = _entity_id("switch", serial, "grid_heating")
-
+def _build_dashboard_config(serial: str, entity_ids: dict[str, str]) -> dict:
+    """Return the lovelace config dict."""
     return {
         "title": f"Elon {serial}",
         "views": [
@@ -39,20 +52,16 @@ def _build_dashboard_config(serial: str) -> dict:
                 "cards": [
                     {
                         "type": "gauge",
-                        "entity": water_temp,
+                        "entity": entity_ids["water_temperature"],
                         "name": "Water Temperature",
                         "min": 0,
                         "max": 80,
                         "needle": True,
-                        "severity": {
-                            "green": 55,
-                            "yellow": 40,
-                            "red": 0,
-                        },
+                        "severity": {"green": 55, "yellow": 40, "red": 0},
                     },
                     {
                         "type": "tile",
-                        "entity": grid_heat,
+                        "entity": entity_ids["grid_heat"],
                         "name": "Heat Now (Grid)",
                         "color": "deep-orange",
                         "icon_tap_action": {"action": "toggle"},
@@ -62,10 +71,10 @@ def _build_dashboard_config(serial: str) -> dict:
                         "title": "Status",
                         "show_header_toggle": False,
                         "entities": [
-                            {"entity": heating_state, "name": "Heating State"},
-                            {"entity": power_source,  "name": "Power Source"},
-                            {"entity": ac_current,    "name": "AC Current"},
-                            {"entity": ambient_temp,  "name": "Ambient Temp"},
+                            {"entity": entity_ids["heating_state"],       "name": "Heating State"},
+                            {"entity": entity_ids["power_source"],        "name": "Power Source"},
+                            {"entity": entity_ids["ac_current"],          "name": "AC Current"},
+                            {"entity": entity_ids["ambient_temperature"], "name": "Ambient Temp"},
                         ],
                     },
                 ],
@@ -74,47 +83,73 @@ def _build_dashboard_config(serial: str) -> dict:
     }
 
 
-async def async_setup_dashboard(hass: HomeAssistant, serial: str) -> None:
-    """Create the Elon dashboard in Lovelace storage if not already present.
+async def _create_dashboard(hass: HomeAssistant, serial: str) -> None:
+    """Create the dashboard using HA's lovelace runtime APIs.
 
-    Safe to call on every startup — skips creation if the dashboard already
-    exists so user edits are not overwritten.
+    Called after EVENT_HOMEASSISTANT_STARTED so the lovelace DashboardsCollection
+    and all entity registrations are fully initialised.
     """
+    from homeassistant.components.lovelace import DOMAIN as LOVELACE_DOMAIN
+
     url_path = slugify(f"elon {serial}").replace("_", "-")
-    dashboard_store_key = f"lovelace.{url_path}"
+    lovelace = hass.data.get(LOVELACE_DOMAIN)
+
+    if lovelace is None:
+        _LOGGER.error("Elon dashboard: lovelace component not found in hass.data")
+        return
+
+    # LovelaceData is a dataclass — access attributes, not dict keys
+    collection = getattr(lovelace, "dashboards_collection", None)
+    dashboards: dict = getattr(lovelace, "dashboards", {})
 
     # ------------------------------------------------------------------
-    # 1. Register the dashboard in the dashboards collection
+    # 1. Register dashboard if not already present
     # ------------------------------------------------------------------
-    dashboards_store = Store(
-        hass, _STORE_VERSION, _DASHBOARDS_STORE_KEY
-    )
-    # HA's StorageCollection stores items under the key "items"
-    dashboards_data = await dashboards_store.async_load() or {"items": []}
-
-    existing_paths = {d.get("url_path") for d in dashboards_data.get("items", [])}
-
-    if url_path not in existing_paths:
-        dashboards_data.setdefault("items", []).append(
-            {
+    if url_path not in dashboards:
+        if collection is None:
+            _LOGGER.error("Elon: dashboards_collection attribute missing from LovelaceData")
+            return
+        try:
+            await collection.async_create_item({
                 "icon": "mdi:water-boiler",
-                "id": uuid.uuid4().hex,
                 "mode": "storage",
                 "require_admin": False,
                 "show_in_sidebar": True,
                 "title": f"Elon {serial}",
                 "url_path": url_path,
-            }
-        )
-        await dashboards_store.async_save(dashboards_data)
-        _LOGGER.info("Elon: registered Lovelace dashboard '%s'", url_path)
+            })
+            _LOGGER.info("Elon: registered dashboard '%s' via collection API", url_path)
+        except Exception:
+            _LOGGER.exception("Elon: failed to register dashboard via collection")
+            return
 
     # ------------------------------------------------------------------
-    # 2. Write the dashboard content (only if it doesn't exist yet)
+    # 2. Write dashboard content via the LovelaceStorage instance
     # ------------------------------------------------------------------
-    content_store = Store(
-        hass, _STORE_VERSION, dashboard_store_key
-    )
-    if not await content_store.async_load():
-        await content_store.async_save({"config": _build_dashboard_config(serial)})
-        _LOGGER.info("Elon: created Lovelace dashboard content for '%s'", url_path)
+    dashboards = getattr(lovelace, "dashboards", {})
+    dashboard_instance = dashboards.get(url_path)
+
+    if dashboard_instance is None:
+        _LOGGER.warning("Elon: dashboard instance for '%s' not found after registration", url_path)
+        return
+
+    entity_ids = _lookup_entity_ids(hass, serial)
+    config = _build_dashboard_config(serial, entity_ids)
+
+    if hasattr(dashboard_instance, "async_save"):
+        await dashboard_instance.async_save(config)
+        _LOGGER.info("Elon: wrote dashboard content for '%s', entity_ids=%s", url_path, entity_ids)
+    else:
+        _LOGGER.warning(
+            "Elon: dashboard instance for '%s' has no async_save (type=%s)",
+            url_path, type(dashboard_instance),
+        )
+
+
+def async_schedule_dashboard_setup(hass: HomeAssistant, serial: str) -> None:
+    """Schedule dashboard creation to run after HA has fully started."""
+
+    async def _on_started(event: Event) -> None:
+        await _create_dashboard(hass, serial)
+
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _on_started)
