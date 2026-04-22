@@ -1,5 +1,6 @@
 """API client for Elon Water Heater."""
 
+import logging
 import aiohttp
 from .const import (
     HOSTNAME_FORMAT,
@@ -8,6 +9,9 @@ from .const import (
     ENDPOINT_FORCE_REHEAT,
     ENDPOINT_CANCEL_HEATING,
 )
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ElonApiClient:
@@ -39,9 +43,12 @@ class ElonApiClient:
         url = f"http://{self._host}/{endpoint}"
         payload = data if data is not None else {}
 
+        _LOGGER.debug("POST %s  body=%s", url, payload)
         async with self._session.post(url, json=payload) as response:
+            raw = await response.text()
+            _LOGGER.debug("POST %s  status=%s  response=%s", url, response.status, raw)
             response.raise_for_status()
-            return await response.json()
+            return await response.json(content_type=None)
 
     async def get_device_status(self) -> dict:
         """Get device status including power source and reheat info.
@@ -64,14 +71,36 @@ class ElonApiClient:
             Dict mapping sensor ID to value
         """
         result = await self._post(ENDPOINT_MEASUREMENTS, {"SensorIds": sensor_ids})
+        _LOGGER.debug("get_measurements top-level keys: %s", list(result.keys()))
 
         measurements = {}
-        if "sensorValues" in result:
-            for item in result["sensorValues"]:
-                sensor_id = item.get("sensorId")
-                raw_value = item.get("value", 0)
+        # Find the list of sensor readings — key name may vary by firmware
+        items = None
+        for key in ("sensorValues", "measurements", "values", "sensors"):
+            if key in result:
+                items = result[key]
+                _LOGGER.debug("get_measurements: using key '%s'", key)
+                break
+
+        if items is None:
+            _LOGGER.warning(
+                "get_measurements: no recognised list key in response keys=%s  full=%s",
+                list(result.keys()), result,
+            )
+            return measurements
+
+        # Log the first item so we can see the actual field names
+        if items:
+            _LOGGER.debug("get_measurements: first item fields=%s  value=%s", list(items[0].keys()), items[0])
+
+        for item in items:
+            # Try common field name variants
+            sensor_id = item.get("sensorId") or item.get("id") or item.get("sensor_id")
+            raw_value = item.get("value") if item.get("value") is not None else item.get("reading") or item.get("rawValue", 0)
+            if sensor_id is not None:
                 measurements[sensor_id] = raw_value
 
+        _LOGGER.debug("get_measurements parsed: %s", measurements)
         return measurements
 
     async def force_reheat(self) -> bool:

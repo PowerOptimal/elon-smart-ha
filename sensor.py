@@ -45,9 +45,14 @@ async def async_setup_entry(
 class ElonSensor(SensorEntity):
     """Base sensor for Elon Water Heater."""
 
+    _attr_has_entity_name = True
+    # Subclasses must set _unique_id_suffix
+    _unique_id_suffix: str = ""
+
     def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
         """Initialize the sensor."""
         self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.serial_number}_{self._unique_id_suffix}"
         self._attr_device_info = {
             "identifiers": {(DOMAIN, coordinator.serial_number)},
             "name": f"Elon {coordinator.serial_number}",
@@ -69,6 +74,7 @@ class WaterTemperatureSensor(ElonSensor):
     """Water temperature sensor."""
 
     _attr_name = "Water Temperature"
+    _unique_id_suffix = "water_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -87,6 +93,7 @@ class AmbientTemperatureSensor(ElonSensor):
     """Ambient temperature sensor."""
 
     _attr_name = "Ambient Temperature"
+    _unique_id_suffix = "ambient_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -106,6 +113,7 @@ class PowerSourceSensor(ElonSensor):
     """Power source sensor."""
 
     _attr_name = "Power Source"
+    _unique_id_suffix = "power_source"
 
     @property
     def native_value(self) -> str | None:
@@ -121,6 +129,7 @@ class HeatingStateSensor(ElonSensor):
     """Heating state sensor (derived from power source and AC current)."""
 
     _attr_name = "Heating State"
+    _unique_id_suffix = "heating_state"
 
     @property
     def native_value(self) -> str | None:
@@ -156,6 +165,7 @@ class ACCurrentSensor(ElonSensor):
     """AC RMS Current sensor."""
 
     _attr_name = "AC Current"
+    _unique_id_suffix = "ac_current"
     _attr_device_class = SensorDeviceClass.CURRENT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
