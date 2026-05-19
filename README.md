@@ -101,4 +101,8 @@ elon_water_heater/
 
 ## License
 
-MIT
+Copyright (C) 2026 PowerOptimal.
+
+This project is licensed under the **GNU General Public License v3.0 or later (GPL-3.0-or-later)** — see [`LICENSE`](LICENSE) for the full text.
+
+In short: you are free to use, modify, and redistribute this software, but any derivative work you distribute must also be released under GPL-3.0-or-later with source. The software is provided **as-is, without warranty of any kind**; if it sets fire to your water heater we will send a sympathetic note and decline all liability.

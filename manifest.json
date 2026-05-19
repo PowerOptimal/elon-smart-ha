@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "documentation": "https://github.com/yourrepo/elon_water_heater",
   "requirements": [],
-  "codeowners": ["Power Optimal"],
+  "codeowners": ["@poweroptimal"],
   "integration_type": "device",
   "config_flow": true,
   "iot_class": "local_polling"

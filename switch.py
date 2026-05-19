@@ -1,3 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright (C) 2026 PowerOptimal
+#
+# This file is part of elon-smart-ha.
+# elon-smart-ha is free software: you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the
+# Free Software Foundation, either version 3 of the License, or (at your
+# option) any later version. It is distributed in the hope that it will be
+# useful, but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General
+# Public License at <https://www.gnu.org/licenses/> for details.
+
 """Switch platform for Elon Water Heater."""
 
 from homeassistant.components.switch import SwitchEntity
@@ -8,9 +20,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import (
     DOMAIN,
     PowerSource,
-    HEATING_CURRENT_THRESHOLD,
-    SENSOR_ID_AC_CURRENT,
-    SENSOR_RESOLUTIONS,
 )
 from .coordinator import ElonDataUpdateCoordinator
 
@@ -63,30 +72,16 @@ class ElonGridHeatSwitch(SwitchEntity):
 
     @property
     def is_on(self) -> bool:
-        """True when a forced reheat is active or the device is heating from grid.
+        """True when the device is not on AC grid power.
 
-        reheatTime > 0 means a forced reheat has been scheduled/is running.
-        As a secondary check, powerSource==AC_GRID with AC current above threshold
-        also counts, for cases where the device is heating without a forced request.
+        ForceReheat is active (or relevant) when the device is operating on
+        solar or is disconnected.  Once powerSource == ACGrid the device is
+        already heating from the grid and CancelGridHeating becomes the action.
         """
         data = self.coordinator.data
         if not data:
             return False
-
-        # Forced reheat indicator from device status (most reliable)
-        if data.get("reheatTime", 0) > 0:
-            return True
-
-        # Fallback: actively drawing grid power above heating threshold
-        sensors = self.coordinator.sensor_data
-        power_source = data.get("powerSource")
-        ac_current_raw = sensors.get(SENSOR_ID_AC_CURRENT, 0)
-        ac_current = ac_current_raw * SENSOR_RESOLUTIONS[SENSOR_ID_AC_CURRENT]
-
-        return (
-            power_source == PowerSource.AC_GRID
-            and ac_current > HEATING_CURRENT_THRESHOLD
-        )
+        return data.get("powerSource") != PowerSource.AC_GRID
 
     @property
     def icon(self) -> str:
