@@ -33,7 +33,7 @@ def _lookup_entity_ids(hass: HomeAssistant, serial: str) -> dict[str, str]:
         "power_source":        ("sensor", f"{serial}_power_source"),
         "heating_state":       ("sensor", f"{serial}_heating_state"),
         "ac_current":          ("sensor", f"{serial}_ac_current"),
-        "grid_heat":           ("switch", f"{serial}_grid_heat"),
+        "grid_heat":           ("water_heater", f"{serial}_water_heater"),
     }
 
     result = {}

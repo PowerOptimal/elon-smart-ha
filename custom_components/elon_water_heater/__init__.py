@@ -21,7 +21,7 @@ from .coordinator import ElonDataUpdateCoordinator
 from .const import DOMAIN
 from .dashboard import async_schedule_dashboard_setup
 
-PLATFORMS = ["sensor", "switch"]
+PLATFORMS = ["sensor", "water_heater"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
