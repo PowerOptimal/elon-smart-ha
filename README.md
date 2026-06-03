@@ -78,14 +78,16 @@ The integration's `water_heater` entity exposes current temperature and on/off a
 
 ## Entities
 
-| Entity                                         | Description                                                                |
-| ---------------------------------------------- | -------------------------------------------------------------------------- |
-| `water_heater.elon_<serial>`                   | Water heater: current temperature + on/off (force / cancel grid heat).     |
-| `sensor.elon_<serial>_water_temperature`       | Water temperature (°C).                                                    |
-| `sensor.elon_<serial>_ambient_temperature`     | Ambient temperature (°C).                                                  |
-| `sensor.elon_<serial>_power_source`            | Power source: DC Solar, AC Grid, Disconnected.                             |
-| `sensor.elon_<serial>_heating_state`           | Derived heating state: Heating, Solar, Grid (Idle), Disconnected.          |
-| `sensor.elon_<serial>_ac_current`              | AC RMS current (A).                                                        |
+| Entity                                       | Description                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------- |
+| `water_heater.elon_<serial>`                 | Water heater: current temperature + on/off (force / cancel grid heat). |
+| `sensor.elon_<serial>_water_temperature`     | Water temperature (°C).                                                |
+| `sensor.elon_<serial>_ambient_temperature`   | Ambient temperature (°C).                                              |
+| `sensor.elon_<serial>_power_source`          | Power source: DC Solar, AC Grid, Disconnected.                         |
+| `sensor.elon_<serial>_heating_state`         | Derived heating state: Heating, Solar, Grid (Idle), Disconnected.      |
+| `sensor.elon_<serial>_ac_current`            | AC RMS current (A).                                                    |
+| `sensor.elon_<serial>_ac_power`              | Instantaneous AC power draw (W) — derived from AC current × voltage.   |
+| `sensor.elon_<serial>_dc_power`              | Instantaneous DC (solar PV) power (W) — derived from DC current × voltage. |
 
 ## Troubleshooting
 

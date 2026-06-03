@@ -1,7 +1,7 @@
 {
   "domain": "elon_water_heater",
   "name": "Elon Water Heater",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "documentation": "https://github.com/PowerOptimal/elon-smart-ha",
   "issue_tracker": "https://github.com/PowerOptimal/elon-smart-ha/issues",
   "requirements": [],

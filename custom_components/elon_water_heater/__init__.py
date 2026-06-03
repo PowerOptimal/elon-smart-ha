@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 
 from .api import ElonApiClient
 from .coordinator import ElonDataUpdateCoordinator
-from .const import DOMAIN
+from .const import DEVICE_HTTP_TIMEOUT, DOMAIN
 from .dashboard import async_schedule_dashboard_setup
 
 PLATFORMS = ["sensor", "water_heater"]
@@ -47,10 +47,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry."""
     serial_number = entry.data["serial_number"]
 
-    # Create aiohttp session with SSL disabled (device has no HTTPS)
+    # Create aiohttp session with SSL disabled (device has no HTTPS).  The
+    # device's measurement query can take ~5 s; use a generous per-request
+    # timeout so transient slowness doesn't drop sensor data.
     connector = aiohttp.TCPConnector(ssl=False)
     session = aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=10),
+        timeout=aiohttp.ClientTimeout(total=DEVICE_HTTP_TIMEOUT),
         connector=connector,
     )
 

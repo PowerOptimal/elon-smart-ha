@@ -28,12 +28,11 @@ def _lookup_entity_ids(hass: HomeAssistant, serial: str) -> dict[str, str]:
     registry = er.async_get(hass)
 
     wanted = {
-        "water_temperature":   ("sensor", f"{serial}_water_temperature"),
-        "ambient_temperature": ("sensor", f"{serial}_ambient_temperature"),
-        "power_source":        ("sensor", f"{serial}_power_source"),
-        "heating_state":       ("sensor", f"{serial}_heating_state"),
-        "ac_current":          ("sensor", f"{serial}_ac_current"),
-        "grid_heat":           ("water_heater", f"{serial}_water_heater"),
+        "water_temperature": ("sensor", f"{serial}_water_temperature"),
+        "ac_power":          ("sensor", f"{serial}_ac_power"),
+        "dc_power":          ("sensor", f"{serial}_dc_power"),
+        "power_source":      ("sensor", f"{serial}_power_source"),
+        "grid_heat":         ("water_heater", f"{serial}_water_heater"),
     }
 
     result = {}
@@ -83,10 +82,10 @@ def _build_dashboard_config(serial: str, entity_ids: dict[str, str]) -> dict:
                         "title": "Status",
                         "show_header_toggle": False,
                         "entities": [
-                            {"entity": entity_ids["heating_state"],       "name": "Heating State"},
-                            {"entity": entity_ids["power_source"],        "name": "Power Source"},
-                            {"entity": entity_ids["ac_current"],          "name": "AC Current"},
-                            {"entity": entity_ids["ambient_temperature"], "name": "Ambient Temp"},
+                            {"entity": entity_ids["water_temperature"], "name": "Water Temperature"},
+                            {"entity": entity_ids["ac_power"],          "name": "AC Power"},
+                            {"entity": entity_ids["dc_power"],          "name": "DC Power"},
+                            {"entity": entity_ids["power_source"],      "name": "Power Source"},
                         ],
                     },
                 ],

@@ -17,7 +17,7 @@ from homeassistant.components.sensor import (
     SensorDeviceClass,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature, UnitOfElectricCurrent
+from homeassistant.const import UnitOfPower, UnitOfTemperature, UnitOfElectricCurrent
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -27,6 +27,9 @@ from .const import (
     SENSOR_ID_WATER_TEMP,
     SENSOR_ID_AMBIENT_TEMP,
     SENSOR_ID_AC_CURRENT,
+    SENSOR_ID_AC_VOLTAGE,
+    SENSOR_ID_DC_CURRENT,
+    SENSOR_ID_DC_VOLTAGE,
     SENSOR_RESOLUTIONS,
     POWER_SOURCE_NAMES,
     PowerSource,
@@ -49,9 +52,19 @@ async def async_setup_entry(
         PowerSourceSensor(coordinator),
         HeatingStateSensor(coordinator),
         ACCurrentSensor(coordinator),
+        ACPowerSensor(coordinator),
+        DCPowerSensor(coordinator),
     ]
 
     async_add_entities(sensors)
+
+
+def _scaled(sensors: dict[int, int], sensor_id: int) -> float | None:
+    """Apply the sensor's resolution to its raw integer reading."""
+    raw = sensors.get(sensor_id)
+    if raw is None:
+        return None
+    return raw * SENSOR_RESOLUTIONS[sensor_id]
 
 
 class ElonSensor(SensorEntity):
@@ -185,10 +198,51 @@ class ACCurrentSensor(ElonSensor):
     @property
     def native_value(self) -> float | None:
         """Return AC current."""
-        sensors = self.coordinator.sensor_data
-        raw = sensors.get(SENSOR_ID_AC_CURRENT)
-        if raw is None:
-            return None
-        resolution = SENSOR_RESOLUTIONS[SENSOR_ID_AC_CURRENT]
-        return round(raw * resolution, 3)
+        value = _scaled(self.coordinator.sensor_data, SENSOR_ID_AC_CURRENT)
+        return None if value is None else round(value, 3)
 
+
+class ACPowerSensor(ElonSensor):
+    """Instantaneous AC power draw, in Watts.
+
+    Derived from AC RMS current and AC RMS voltage.  ``None`` if either reading
+    is missing.
+    """
+
+    _attr_name = "AC Power"
+    _unique_id_suffix = "ac_power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_value(self) -> float | None:
+        sensors = self.coordinator.sensor_data
+        current = _scaled(sensors, SENSOR_ID_AC_CURRENT)
+        voltage = _scaled(sensors, SENSOR_ID_AC_VOLTAGE)
+        if current is None or voltage is None:
+            return None
+        return round(current * voltage, 1)
+
+
+class DCPowerSensor(ElonSensor):
+    """Instantaneous DC (solar PV) power, in Watts.
+
+    Derived from DC current and DC voltage.  ``None`` if either reading is
+    missing.
+    """
+
+    _attr_name = "DC Power"
+    _unique_id_suffix = "dc_power"
+    _attr_device_class = SensorDeviceClass.POWER
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfPower.WATT
+
+    @property
+    def native_value(self) -> float | None:
+        sensors = self.coordinator.sensor_data
+        current = _scaled(sensors, SENSOR_ID_DC_CURRENT)
+        voltage = _scaled(sensors, SENSOR_ID_DC_VOLTAGE)
+        if current is None or voltage is None:
+            return None
+        return round(current * voltage, 1)

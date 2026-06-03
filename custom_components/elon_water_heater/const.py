@@ -81,5 +81,12 @@ POWER_SOURCE_NAMES = {
 # Heating state
 HEATING_CURRENT_THRESHOLD = 2.0  # Amps
 
-# Polling interval
-DEFAULT_SCAN_INTERVAL = timedelta(seconds=30)
+# Polling interval.  The device's measurement query takes ~5 s; polling every
+# 60 s leaves comfortable headroom for the two sequential calls per refresh
+# (status + sensors) without flooding the device.
+DEFAULT_SCAN_INTERVAL = timedelta(seconds=60)
+
+# HTTP timeout for an individual request to the device.  The measurement query
+# can take ~5 s under load; 30 s gives a generous safety margin so transient
+# slowness doesn't drop sensor data.
+DEVICE_HTTP_TIMEOUT = 30

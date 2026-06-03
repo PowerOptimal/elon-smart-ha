@@ -73,7 +73,9 @@ class ElonDataUpdateCoordinator(DataUpdateCoordinator):
             # Return existing data on failure
             return self.data
 
-        # Fetch sensor measurements
+        # Fetch sensor measurements.  On failure we keep the previous values
+        # rather than blanking everything out, but we log so the cause is
+        # diagnosable rather than silently swallowed.
         try:
             sensor_ids = [
                 SENSOR_ID_WATER_TEMP,
@@ -87,8 +89,10 @@ class ElonDataUpdateCoordinator(DataUpdateCoordinator):
                 SENSOR_ID_ELEMENT_RESISTANCE,
             ]
             self.sensor_data = await self.api.get_measurements(sensor_ids)
-        except Exception:
-            #传感器数据获取失败时保留旧数据
-            pass
+        except Exception as exc:
+            self.logger.warning(
+                "Failed to fetch sensor measurements; keeping previous values: %s",
+                exc,
+            )
 
         return self.data
