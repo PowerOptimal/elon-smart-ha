@@ -1,3 +1,7 @@
 CLAUDE.md
 .idea
 .DS_Store
+.venv
+__pycache__/
+.pytest_cache/
+openapi_elon.yml

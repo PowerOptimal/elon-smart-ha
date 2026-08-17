@@ -1,0 +1,29 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Elon Water Heater",
+        "description": "Enter the serial number printed on the device.",
+        "data": {
+          "serial_number": "Serial number",
+          "host": "Host or IP address (optional)"
+        },
+        "data_description": {
+          "host": "Leave blank to find the device automatically over mDNS. Set this only if discovery does not work on your network, and give the device a fixed DHCP lease if you do."
+        }
+      },
+      "confirm": {
+        "title": "Elon Water Heater",
+        "description": "Add Elon water heater {serial}, found at {host}?"
+      }
+    },
+    "error": {
+      "required": "A serial number is required.",
+      "invalid": "The serial number may only contain letters, digits, hyphens and underscores."
+    },
+    "abort": {
+      "already_configured": "This device is already set up.",
+      "not_elon_device": "That device is not an Elon water heater."
+    }
+  }
+}

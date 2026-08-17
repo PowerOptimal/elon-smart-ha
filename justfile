@@ -2,6 +2,15 @@
 default:
     @just --list
 
+# Create the test virtualenv and install the HA test harness.
+setup:
+    uv venv --python 3.14
+    uv pip install -r requirements-test.txt
+
+# Run the test suite.
+test *args:
+    .venv/bin/python -m pytest {{args}}
+
 # Install integration on a Home Assistant host via scp + restart.
 # Usage: just install <host> [user]
 #   e.g. just install 192.168.11.12

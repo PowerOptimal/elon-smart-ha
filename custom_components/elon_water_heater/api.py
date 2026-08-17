@@ -13,122 +13,143 @@
 """API client for Elon Water Heater."""
 
 import logging
-import aiohttp
-from .const import (
-    HOSTNAME_FORMAT,
-    ENDPOINT_DEVICE_STATUS,
-    ENDPOINT_MEASUREMENTS,
-    ENDPOINT_FORCE_REHEAT,
-    ENDPOINT_CANCEL_HEATING,
-)
 
+import aiohttp
+from homeassistant.exceptions import HomeAssistantError
+
+from .const import (
+    DEVICE_HTTP_TIMEOUT,
+    ENDPOINT_CANCEL_HEATING,
+    ENDPOINT_DEVICE_STATUS,
+    ENDPOINT_FORCE_REHEAT,
+    ENDPOINT_MEASUREMENTS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
+# The device wraps every action response in this envelope.  Anything other
+# than ``Okay`` means the device declined to act.
+ACTION_RESULT_OK = "Okay"
+
+
+class ElonApiError(HomeAssistantError):
+    """Base error for device communication.
+
+    Derives from :class:`HomeAssistantError` so that a failure raised out of a
+    service call surfaces as a readable message in the UI rather than a raw
+    ``aiohttp`` traceback.
+    """
+
+
+class ElonConnectionError(ElonApiError):
+    """The device could not be reached."""
+
+
+class ElonActionRejected(ElonApiError):
+    """The device was reached but refused to perform the action."""
+
 
 class ElonApiClient:
-    """Client for communicating with the Elon water heater device."""
+    """Client for communicating with the Elon water heater device.
 
-    def __init__(self, serial_number: str, session: aiohttp.ClientSession):
+    The client is deliberately dumb about addressing: it talks to whatever
+    :attr:`host` currently holds.  Resolving the device's ``.local`` name to an
+    address, and re-resolving it when the device moves or reboots, is the
+    coordinator's job.
+    """
+
+    def __init__(self, host: str | None, session: aiohttp.ClientSession) -> None:
         """Initialize the API client.
 
         Args:
-            serial_number: Device serial number
-            session: aiohttp client session
+            host: Hostname or IP address of the device, without scheme or port.
+                ``None`` means the address is not yet known; the coordinator
+                resolves one before the first request.
+            session: aiohttp client session, owned by the caller.
         """
-        self._host = HOSTNAME_FORMAT.format(serial=serial_number)
+        self.host = host
         self._session = session
 
     async def _post(self, endpoint: str, data: dict | None = None) -> dict:
         """Make a POST request to the device.
 
         Args:
-            endpoint: API endpoint path
-            data: Optional JSON payload
+            endpoint: API endpoint path.
+            data: Optional JSON payload; an empty object is sent if omitted.
 
         Returns:
-            Response JSON
+            The decoded response body.
 
         Raises:
-            aiohttp.ClientError: On connection error
+            ElonConnectionError: The device was unreachable, timed out, or
+                returned a non-2xx status.
         """
-        url = f"http://{self._host}/{endpoint}"
+        url = f"http://{self.host}/{endpoint}"
         payload = data if data is not None else {}
 
         _LOGGER.debug("POST %s  body=%s", url, payload)
-        async with self._session.post(url, json=payload) as response:
-            raw = await response.text()
-            _LOGGER.debug("POST %s  status=%s  response=%s", url, response.status, raw)
-            response.raise_for_status()
-            return await response.json(content_type=None)
+        try:
+            async with self._session.post(
+                url,
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=DEVICE_HTTP_TIMEOUT),
+            ) as response:
+                response.raise_for_status()
+                # The device serves JSON without a JSON content type.
+                return await response.json(content_type=None)
+        except aiohttp.ClientError as err:
+            raise ElonConnectionError(f"Cannot reach Elon device at {self.host}") from err
+        except TimeoutError as err:
+            raise ElonConnectionError(f"Timed out talking to Elon device at {self.host}") from err
+
+    async def _action(self, endpoint: str) -> None:
+        """Invoke an action endpoint and check the result envelope.
+
+        Raises:
+            ElonConnectionError: The device was unreachable.
+            ElonActionRejected: The device declined, carrying ``failureReason``.
+        """
+        result = await self._post(endpoint, {})
+        outcome = result.get("actionResult")
+        if outcome != ACTION_RESULT_OK:
+            reason = result.get("failureReason") or "no reason given"
+            raise ElonActionRejected(f"Device refused {endpoint}: {outcome} ({reason})")
 
     async def get_device_status(self) -> dict:
-        """Get device status including power source and reheat info.
+        """Get device status.
 
         Returns:
-            Device status dict with powerSource, waterTemperature, etc.
+            The first entry of ``deviceStatuses``, carrying ``powerSource``,
+            ``waterTemperature``, ``hasOpenAlarms`` and friends.  An empty dict
+            if the device reported no statuses.
         """
         result = await self._post(ENDPOINT_DEVICE_STATUS)
-        if result.get("deviceStatuses"):
-            return result["deviceStatuses"][0]
-        return {}
+        statuses = result.get("deviceStatuses")
+        return statuses[0] if statuses else {}
 
-    async def get_measurements(self, sensor_ids: list[int]) -> dict:
-        """Get sensor measurements.
+    async def get_measurements(self, sensor_ids: list[int]) -> dict[int, int]:
+        """Get raw sensor measurements.
+
+        Values are returned unscaled; callers apply ``SENSOR_RESOLUTIONS``.
 
         Args:
-            sensor_ids: List of sensor IDs to retrieve
+            sensor_ids: Sensor IDs to retrieve.
 
         Returns:
-            Dict mapping sensor ID to value
+            Mapping of sensor ID to raw integer reading.  Sensors the firmware
+            does not implement are echoed back as ID ``0`` and dropped here.
         """
         result = await self._post(ENDPOINT_MEASUREMENTS, {"SensorIds": sensor_ids})
-        _LOGGER.debug("get_measurements top-level keys: %s", list(result.keys()))
+        return {
+            item["sensorId"]: item["value"]
+            for item in result.get("measurements", [])
+            if item.get("sensorId")
+        }
 
-        measurements = {}
-        # Find the list of sensor readings — key name may vary by firmware
-        items = None
-        for key in ("sensorValues", "measurements", "values", "sensors"):
-            if key in result:
-                items = result[key]
-                _LOGGER.debug("get_measurements: using key '%s'", key)
-                break
+    async def force_reheat(self) -> None:
+        """Trigger immediate grid heating."""
+        await self._action(ENDPOINT_FORCE_REHEAT)
 
-        if items is None:
-            _LOGGER.warning(
-                "get_measurements: no recognised list key in response keys=%s  full=%s",
-                list(result.keys()), result,
-            )
-            return measurements
-
-        # Log the first item so we can see the actual field names
-        if items:
-            _LOGGER.debug("get_measurements: first item fields=%s  value=%s", list(items[0].keys()), items[0])
-
-        for item in items:
-            # Try common field name variants
-            sensor_id = item.get("sensorId") or item.get("id") or item.get("sensor_id")
-            raw_value = item.get("value") if item.get("value") is not None else item.get("reading") or item.get("rawValue", 0)
-            if sensor_id is not None:
-                measurements[sensor_id] = raw_value
-
-        _LOGGER.debug("get_measurements parsed: %s", measurements)
-        return measurements
-
-    async def force_reheat(self) -> bool:
-        """Trigger immediate grid heating.
-
-        Returns:
-            True if successful
-        """
-        await self._post(ENDPOINT_FORCE_REHEAT, {})
-        return True
-
-    async def cancel_grid_heating(self) -> bool:
-        """Cancel a previously triggered heat cycle.
-
-        Returns:
-            True if successful
-        """
-        await self._post(ENDPOINT_CANCEL_HEATING, {})
-        return True
+    async def cancel_grid_heating(self) -> None:
+        """Cancel a previously triggered heat cycle."""
+        await self._action(ENDPOINT_CANCEL_HEATING)

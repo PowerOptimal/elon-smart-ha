@@ -20,13 +20,28 @@ DOMAIN = "elon_water_heater"
 HOSTNAME_FORMAT = "ELON-{serial}.local"
 BASE_URL = "http://{host}/{endpoint}"
 
+# Config entry keys
+CONF_SERIAL_NUMBER = "serial_number"
+CONF_HOST = "host"
+
+# The device advertises itself as an instance named ``ELON-<serial>`` under the
+# generic HTTP service type.  There are no TXT records; the serial has to be
+# taken from the instance name.
+ZEROCONF_TYPE = "_http._tcp.local."
+ZEROCONF_NAME_PREFIX = "elon-"
+
+# How long to wait for an mDNS response when resolving the device address.
+ZEROCONF_RESOLVE_TIMEOUT_MS = 3000
+
 # API Endpoints
 ENDPOINT_DEVICE_STATUS = "V1/DeviceStatus/Query"
 ENDPOINT_MEASUREMENTS = "V1/CurrentMeasurements/Query"
 ENDPOINT_FORCE_REHEAT = "V1/Thermostat/ForceReheat"
 ENDPOINT_CANCEL_HEATING = "V1/Thermostat/CancelGridHeating"
 
-# Sensor IDs
+# Sensor IDs.  Sensor 9 (element resistance) is documented in the protocol but
+# is not implemented by the firmware -- requesting it returns an entry with
+# ``sensorId: 0`` -- so it is deliberately absent here.
 SENSOR_ID_WATER_TEMP = 1
 SENSOR_ID_AMBIENT_TEMP = 2
 SENSOR_ID_DC_VOLTAGE = 3
@@ -35,7 +50,6 @@ SENSOR_ID_DC_ENERGY = 5
 SENSOR_ID_AC_VOLTAGE = 6
 SENSOR_ID_AC_CURRENT = 7
 SENSOR_ID_AC_ENERGY = 8
-SENSOR_ID_ELEMENT_RESISTANCE = 9
 
 # Sensor resolutions (multiply raw value by this)
 SENSOR_RESOLUTIONS = {
@@ -47,20 +61,20 @@ SENSOR_RESOLUTIONS = {
     SENSOR_ID_AC_VOLTAGE: 0.1,
     SENSOR_ID_AC_CURRENT: 0.001,
     SENSOR_ID_AC_ENERGY: 1,
-    SENSOR_ID_ELEMENT_RESISTANCE: 0.1,
 }
 
-SENSOR_UNITS = {
-    SENSOR_ID_WATER_TEMP: "°C",
-    SENSOR_ID_AMBIENT_TEMP: "°C",
-    SENSOR_ID_DC_VOLTAGE: "V",
-    SENSOR_ID_DC_CURRENT: "A",
-    SENSOR_ID_DC_ENERGY: "Wh",
-    SENSOR_ID_AC_VOLTAGE: "V",
-    SENSOR_ID_AC_CURRENT: "A",
-    SENSOR_ID_AC_ENERGY: "Wh",
-    SENSOR_ID_ELEMENT_RESISTANCE: "Ω",
-}
+# Sensors actually fetched each poll.  Water temperature is read from the
+# DeviceStatus payload rather than sensor 1 -- the two sources refresh on
+# different cadences and disagree slightly, so we keep a single source.  The
+# energy counters (5, 8) are not polled until the savings feature needs them;
+# the measurement query is the slow call in each refresh.
+POLLED_SENSOR_IDS = [
+    SENSOR_ID_AMBIENT_TEMP,
+    SENSOR_ID_DC_VOLTAGE,
+    SENSOR_ID_DC_CURRENT,
+    SENSOR_ID_AC_VOLTAGE,
+    SENSOR_ID_AC_CURRENT,
+]
 
 # Power source enum
 class PowerSource:
@@ -90,3 +104,8 @@ DEFAULT_SCAN_INTERVAL = timedelta(seconds=60)
 # can take ~5 s under load; 30 s gives a generous safety margin so transient
 # slowness doesn't drop sensor data.
 DEVICE_HTTP_TIMEOUT = 30
+
+# Delay before the follow-up refresh after a user action, in seconds.  The
+# device switches power source within about ten seconds of ForceReheat or
+# CancelGridHeating, so this lands just after the real transition.
+ACTION_SETTLE_DELAY = 15
