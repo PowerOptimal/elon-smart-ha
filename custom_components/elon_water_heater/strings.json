@@ -25,5 +25,15 @@
       "already_configured": "This device is already set up.",
       "not_elon_device": "That device is not an Elon water heater."
     }
+  },
+  "entity": {
+    "water_heater": {
+      "grid_boost": {
+        "state": {
+          "off": "Off",
+          "electric": "Grid"
+        }
+      }
+    }
   }
 }

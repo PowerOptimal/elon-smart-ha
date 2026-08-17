@@ -63,6 +63,10 @@ class ElonWaterHeater(ElonEntity, WaterHeaterEntity):
     """
 
     _attr_name = None  # use device name so the tile reads as the device
+    # Relabels the operation modes in the UI: "electric" reads as "Grid",
+    # which is what the device actually does.  The underlying state string is
+    # unchanged, so automations still match on ``electric``.
+    _attr_translation_key = "grid_boost"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_operation_list = OPERATION_MODES
     _attr_supported_features = (

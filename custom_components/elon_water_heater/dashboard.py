@@ -73,7 +73,7 @@ def _build_dashboard_config(serial: str, entity_ids: dict[str, str]) -> dict:
                     {
                         "type": "tile",
                         "entity": entity_ids["grid_heat"],
-                        "name": "Heat Now (Grid)",
+                        "name": "Heat now",
                         "color": "deep-orange",
                         "icon_tap_action": {"action": "toggle"},
                     },

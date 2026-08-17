@@ -5,3 +5,4 @@ CLAUDE.md
 __pycache__/
 .pytest_cache/
 openapi_elon.yml
+docs/plans

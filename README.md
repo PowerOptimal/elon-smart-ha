@@ -43,18 +43,33 @@ Until this integration is listed in the HACS default repos, you can add it as a 
 
 For development, or for users without HACS, copy the integration directly onto the Home Assistant host.
 
-From a checkout of this repo:
+From a checkout of this repo, with [`just`](https://github.com/casey/just) installed locally and `rsync` available on both machines:
 
 ```sh
-# Replace <ha-host> with the hostname or IP of your HA instance.
-scp -r custom_components/elon_water_heater  root@<ha-host>:/config/custom_components/
+just install <ha-host>          # SSH user defaults to root
+just install <ha-host> <user>   # or give one explicitly
+```
+
+That syncs `custom_components/elon_water_heater/` into `/config/custom_components/` on the host and restarts Home Assistant. Use it for upgrades too — it removes files that have been deleted from the integration, which a plain copy leaves behind.
+
+Then continue at [Configuration](#configuration).
+
+<details>
+<summary>Copying by hand instead</summary>
+
+Only the `custom_components/elon_water_heater/` directory needs to land in `/config/custom_components/` on the host — nothing else from the repo root is required at runtime.
+
+```sh
+rsync -a --delete --exclude __pycache__ \
+    custom_components/elon_water_heater/ \
+    root@<ha-host>:/config/custom_components/elon_water_heater/
 
 ssh root@<ha-host> 'ha core restart'
 ```
 
-Only the `custom_components/elon_water_heater/` directory needs to land in `/config/custom_components/` on the host — nothing else from the repo root is required at runtime.
+Avoid `scp -r` here. On OpenSSH 9 and later it copies into a *nested* `elon_water_heater/elon_water_heater/` when the directory already exists, and it never removes deleted files.
 
-Then continue at [Configuration](#configuration).
+</details>
 
 ## Configuration
 
