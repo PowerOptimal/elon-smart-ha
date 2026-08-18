@@ -12,16 +12,16 @@
 
 """Elon Water Heater integration for Home Assistant."""
 
-import aiohttp
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import ElonApiClient
+from .const import CONF_HOST, CONF_SERIAL_NUMBER, DOMAIN
 from .coordinator import ElonDataUpdateCoordinator
-from .const import DEVICE_HTTP_TIMEOUT, DOMAIN
 from .dashboard import async_schedule_dashboard_setup
 
-PLATFORMS = ["sensor", "water_heater"]
+PLATFORMS = ["binary_sensor", "sensor", "switch", "water_heater"]
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
@@ -29,14 +29,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     domain_config = config.get(DOMAIN)
 
     if domain_config:
-        serial_number = domain_config.get("serial_number")
+        serial_number = domain_config.get(CONF_SERIAL_NUMBER)
         if serial_number:
             # Create a minimal config entry for YAML setup
             hass.async_create_task(
                 hass.config_entries.flow.async_init(
                     DOMAIN,
                     context={"source": "yaml"},
-                    data={"serial_number": serial_number},
+                    data={CONF_SERIAL_NUMBER: serial_number},
                 )
             )
 
@@ -45,50 +45,36 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up a config entry."""
-    serial_number = entry.data["serial_number"]
+    serial_number = entry.data[CONF_SERIAL_NUMBER]
+    manual_host = entry.data.get(CONF_HOST)
 
-    # Create aiohttp session with SSL disabled (device has no HTTPS).  The
-    # device's measurement query can take ~5 s; use a generous per-request
-    # timeout so transient slowness doesn't drop sensor data.
-    connector = aiohttp.TCPConnector(ssl=False)
-    session = aiohttp.ClientSession(
-        timeout=aiohttp.ClientTimeout(total=DEVICE_HTTP_TIMEOUT),
-        connector=connector,
+    # Home Assistant's shared session is correctly configured and torn down
+    # with the instance.  The integration previously built its own, which was
+    # closed only on setup failure and so leaked on every reload.
+    session = async_get_clientsession(hass)
+
+    api = ElonApiClient(manual_host, session)
+    coordinator = ElonDataUpdateCoordinator(
+        hass, api, serial_number, entry, manual_host=manual_host
     )
 
-    try:
-        # Create API client
-        api = ElonApiClient(serial_number, session)
+    await coordinator.async_config_entry_first_refresh()
 
-        # Create coordinator
-        coordinator = ElonDataUpdateCoordinator(hass, api, serial_number, entry)
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
-        # Initial data fetch
-        await coordinator.async_config_entry_first_refresh()
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-        # Store coordinator
-        hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    # Schedule dashboard creation to run after HA has fully started
+    async_schedule_dashboard_setup(hass, serial_number)
 
-        # Forward to platforms
-        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
-        # Schedule dashboard creation to run after HA has fully started
-        async_schedule_dashboard_setup(hass, serial_number)
-
-        return True
-
-    except Exception:
-        await session.close()
-        raise
+    return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    # Unload platforms
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
-        # Remove coordinator
         hass.data[DOMAIN].pop(entry.entry_id, None)
 
     return unload_ok

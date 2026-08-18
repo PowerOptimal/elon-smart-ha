@@ -12,30 +12,36 @@
 
 """Sensors for Elon Water Heater."""
 
+from datetime import datetime
+
 from homeassistant.components.sensor import (
-    SensorEntity,
     SensorDeviceClass,
+    SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfPower, UnitOfTemperature, UnitOfElectricCurrent
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfElectricCurrent,
+    UnitOfPower,
+    UnitOfTemperature,
+)
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
     DOMAIN,
-    SENSOR_ID_WATER_TEMP,
-    SENSOR_ID_AMBIENT_TEMP,
+    POWER_SOURCE_NAMES,
     SENSOR_ID_AC_CURRENT,
     SENSOR_ID_AC_VOLTAGE,
+    SENSOR_ID_AMBIENT_TEMP,
     SENSOR_ID_DC_CURRENT,
     SENSOR_ID_DC_VOLTAGE,
     SENSOR_RESOLUTIONS,
-    POWER_SOURCE_NAMES,
     PowerSource,
-    HEATING_CURRENT_THRESHOLD,
 )
-from .coordinator import ElonDataUpdateCoordinator
+from .coordinator import ElonData, ElonDataUpdateCoordinator
+from .entity import ElonEntity
 
 
 async def async_setup_entry(
@@ -46,71 +52,55 @@ async def async_setup_entry(
     """Set up sensors from a config entry."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
 
-    sensors = [
-        WaterTemperatureSensor(coordinator),
-        AmbientTemperatureSensor(coordinator),
-        PowerSourceSensor(coordinator),
-        HeatingStateSensor(coordinator),
-        ACCurrentSensor(coordinator),
-        ACPowerSensor(coordinator),
-        DCPowerSensor(coordinator),
-    ]
+    async_add_entities(
+        [
+            WaterTemperatureSensor(coordinator),
+            AmbientTemperatureSensor(coordinator),
+            PowerSourceSensor(coordinator),
+            HeatingStateSensor(coordinator),
+            ACCurrentSensor(coordinator),
+            ACPowerSensor(coordinator),
+            DCPowerSensor(coordinator),
+            LastSeenSensor(coordinator),
+        ]
+    )
 
-    async_add_entities(sensors)
 
-
-def _scaled(sensors: dict[int, int], sensor_id: int) -> float | None:
-    """Apply the sensor's resolution to its raw integer reading."""
-    raw = sensors.get(sensor_id)
+def _scaled(data: ElonData, sensor_id: int) -> float | None:
+    """Apply a sensor's resolution to its raw integer reading."""
+    raw = data.sensors.get(sensor_id)
     if raw is None:
         return None
     return raw * SENSOR_RESOLUTIONS[sensor_id]
 
 
-class ElonSensor(SensorEntity):
+class ElonSensor(ElonEntity, SensorEntity):
     """Base sensor for Elon Water Heater."""
-
-    _attr_has_entity_name = True
-    # Subclasses must set _unique_id_suffix
-    _unique_id_suffix: str = ""
-
-    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
-        """Initialize the sensor."""
-        self.coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.serial_number}_{self._unique_id_suffix}"
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, coordinator.serial_number)},
-            "name": f"Elon {coordinator.serial_number}",
-            "manufacturer": "Elon",
-            "model": "Smart Water Heater",
-        }
-
-    async def async_added_to_hass(self) -> None:
-        """Register callbacks."""
-        self.coordinator.async_add_listener(self._handle_update)
-
-    @callback
-    def _handle_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
 
 
 class WaterTemperatureSensor(ElonSensor):
-    """Water temperature sensor."""
+    """Water temperature sensor.
+
+    Read from the device status rather than sensor 1.  Both report water
+    temperature but they refresh on different cadences and disagree slightly,
+    so the integration commits to one source.
+    """
 
     _attr_name = "Water Temperature"
-    _unique_id_suffix = "water_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "water_temperature")
+
     @property
     def native_value(self) -> float | None:
         """Return water temperature."""
-        data = self.coordinator.data
-        if not data:
+        if self.elon_data is None:
             return None
-        temp = data.get("waterTemperature")
+        temp = self.elon_data.status.get("waterTemperature")
         return round(temp, 1) if temp is not None else None
 
 
@@ -118,71 +108,73 @@ class AmbientTemperatureSensor(ElonSensor):
     """Ambient temperature sensor."""
 
     _attr_name = "Ambient Temperature"
-    _unique_id_suffix = "ambient_temperature"
     _attr_device_class = SensorDeviceClass.TEMPERATURE
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
 
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "ambient_temperature")
+
     @property
     def native_value(self) -> float | None:
         """Return ambient temperature."""
-        sensors = self.coordinator.sensor_data
-        raw = sensors.get(SENSOR_ID_AMBIENT_TEMP)
-        if raw is None:
+        if self.elon_data is None:
             return None
-        resolution = SENSOR_RESOLUTIONS[SENSOR_ID_AMBIENT_TEMP]
-        return round(raw * resolution, 1)
+        value = _scaled(self.elon_data, SENSOR_ID_AMBIENT_TEMP)
+        return None if value is None else round(value, 1)
 
 
 class PowerSourceSensor(ElonSensor):
     """Power source sensor."""
 
     _attr_name = "Power Source"
-    _unique_id_suffix = "power_source"
+
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "power_source")
 
     @property
     def native_value(self) -> str | None:
         """Return power source."""
-        data = self.coordinator.data
-        if not data:
+        if self.elon_data is None:
             return None
-        source = data.get("powerSource")
-        return POWER_SOURCE_NAMES.get(source, "Unknown")
+        return POWER_SOURCE_NAMES.get(
+            self.elon_data.status.get("powerSource"), "Unknown"
+        )
 
 
 class HeatingStateSensor(ElonSensor):
-    """Heating state sensor (derived from power source and AC current)."""
+    """Heating state, combining power source with actual current draw.
+
+    Distinguishes grid boost that is genuinely drawing power from grid boost
+    where the element is idle -- the latter being normal for a tank already at
+    target, and a fault indication when it persists.
+    """
 
     _attr_name = "Heating State"
-    _unique_id_suffix = "heating_state"
+
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "heating_state")
 
     @property
     def native_value(self) -> str | None:
         """Return heating state."""
-        data = self.coordinator.data
-        sensors = self.coordinator.sensor_data
-
-        if not data:
+        data = self.elon_data
+        if data is None:
             return None
 
-        power_source = data.get("powerSource")
-        ac_current_raw = sensors.get(SENSOR_ID_AC_CURRENT, 0)
-        ac_current = ac_current_raw * SENSOR_RESOLUTIONS[SENSOR_ID_AC_CURRENT]
-
-        # If AC current > threshold, actively heating from grid
-        if power_source == PowerSource.AC_GRID and ac_current > HEATING_CURRENT_THRESHOLD:
+        if data.is_drawing_grid_power:
             return "Heating"
 
-        # DC Solar power source means DC heating (even if current is low)
+        power_source = data.status.get("powerSource")
         if power_source == PowerSource.DC_SOLAR:
             return "Solar"
-
         if power_source == PowerSource.AC_GRID:
             return "Grid (Idle)"
-
         if power_source == PowerSource.DISCONNECTED:
             return "Disconnected"
-
         return "Unknown"
 
 
@@ -190,36 +182,46 @@ class ACCurrentSensor(ElonSensor):
     """AC RMS Current sensor."""
 
     _attr_name = "AC Current"
-    _unique_id_suffix = "ac_current"
     _attr_device_class = SensorDeviceClass.CURRENT
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfElectricCurrent.AMPERE
 
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "ac_current")
+
     @property
     def native_value(self) -> float | None:
         """Return AC current."""
-        value = _scaled(self.coordinator.sensor_data, SENSOR_ID_AC_CURRENT)
+        if self.elon_data is None:
+            return None
+        value = _scaled(self.elon_data, SENSOR_ID_AC_CURRENT)
         return None if value is None else round(value, 3)
 
 
 class ACPowerSensor(ElonSensor):
     """Instantaneous AC power draw, in Watts.
 
-    Derived from AC RMS current and AC RMS voltage.  ``None`` if either reading
-    is missing.
+    Derived from AC RMS current and voltage.  Both read zero while the grid
+    relay is open, so this correctly reports no draw when idle.
     """
 
     _attr_name = "AC Power"
-    _unique_id_suffix = "ac_power"
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
 
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "ac_power")
+
     @property
     def native_value(self) -> float | None:
-        sensors = self.coordinator.sensor_data
-        current = _scaled(sensors, SENSOR_ID_AC_CURRENT)
-        voltage = _scaled(sensors, SENSOR_ID_AC_VOLTAGE)
+        """Return AC power draw."""
+        if self.elon_data is None:
+            return None
+        current = _scaled(self.elon_data, SENSOR_ID_AC_CURRENT)
+        voltage = _scaled(self.elon_data, SENSOR_ID_AC_VOLTAGE)
         if current is None or voltage is None:
             return None
         return round(current * voltage, 1)
@@ -228,21 +230,54 @@ class ACPowerSensor(ElonSensor):
 class DCPowerSensor(ElonSensor):
     """Instantaneous DC (solar PV) power, in Watts.
 
-    Derived from DC current and DC voltage.  ``None`` if either reading is
+    Derived from DC current and voltage.  ``None`` if either reading is
     missing.
     """
 
     _attr_name = "DC Power"
-    _unique_id_suffix = "dc_power"
     _attr_device_class = SensorDeviceClass.POWER
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_native_unit_of_measurement = UnitOfPower.WATT
 
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "dc_power")
+
     @property
     def native_value(self) -> float | None:
-        sensors = self.coordinator.sensor_data
-        current = _scaled(sensors, SENSOR_ID_DC_CURRENT)
-        voltage = _scaled(sensors, SENSOR_ID_DC_VOLTAGE)
+        """Return DC power."""
+        if self.elon_data is None:
+            return None
+        current = _scaled(self.elon_data, SENSOR_ID_DC_CURRENT)
+        voltage = _scaled(self.elon_data, SENSOR_ID_DC_VOLTAGE)
         if current is None or voltage is None:
             return None
         return round(current * voltage, 1)
+
+
+class LastSeenSensor(ElonSensor):
+    """When the device was last successfully polled.
+
+    Sourced from the coordinator rather than the device's ``lastComms`` field,
+    which is an irregular device-side counter and not wall-clock time.  Stays
+    available while the device is offline so a dashboard can show how stale
+    the readings are instead of silently displaying an old temperature.
+    """
+
+    _attr_name = "Last Seen"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: ElonDataUpdateCoordinator) -> None:
+        """Initialise the sensor."""
+        super().__init__(coordinator, "last_seen")
+
+    @property
+    def available(self) -> bool:
+        """Always available -- reporting staleness is this entity's job."""
+        return True
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the timestamp of the last successful poll."""
+        return self.coordinator.last_successful_update
