@@ -32,7 +32,7 @@ def _lookup_entity_ids(hass: HomeAssistant, serial: str) -> dict[str, str]:
         "ac_power":          ("sensor", f"{serial}_ac_power"),
         "dc_power":          ("sensor", f"{serial}_dc_power"),
         "power_source":      ("sensor", f"{serial}_power_source"),
-        "grid_heat":         ("water_heater", f"{serial}_water_heater"),
+        "grid_boost":        ("switch", f"{serial}_grid_boost"),
     }
 
     result = {}
@@ -72,10 +72,11 @@ def _build_dashboard_config(serial: str, entity_ids: dict[str, str]) -> dict:
                     },
                     {
                         "type": "tile",
-                        "entity": entity_ids["grid_heat"],
+                        "entity": entity_ids["grid_boost"],
                         "name": "Heat now",
                         "color": "deep-orange",
                         "icon_tap_action": {"action": "toggle"},
+                        "features": [{"type": "toggle"}],
                     },
                     {
                         "type": "entities",
